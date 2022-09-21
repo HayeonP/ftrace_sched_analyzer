@@ -11,9 +11,9 @@ import csv
 
 ############### TODO ###############
 # core number of your computer
-CPU_NUM = 4
+CPU_NUM = 12
 # analyze autoware node only
-ONLY_AUTOWARE = False
+ONLY_AUTOWARE = True
 ####################################
 
 # 
@@ -25,6 +25,7 @@ PREV_STAT = 4
 NEXT_COMM = 5
 NEXT_PID = 6
 NEXT_PRIO = 7
+NONE = -100
 
 #
 count_ = 0
@@ -99,7 +100,7 @@ def update_per_process_info(cpu_info, process_name):
                             process_info['PID'] = per_cpu_start_info['cpu'+str(i)][process_name[k]][2]
                             process_info['StartTime'] = per_cpu_start_info['cpu'+str(i)][process_name[k]][1]
                             process_info['EndTime'] = cpu_info['cpu'+str(i)][j][TIME]
-                            process_info['Instance'] = -1
+                            process_info['Instance'] = NONE
 
                             per_cpu_info['cpu'+str(i)][process_name[k]].append(process_info)
 
@@ -136,19 +137,19 @@ def get_node_instance_info(log_file):
     
     node_instance_info = []
     
-    pid = -1
-    start = -1
-    end = -1
-    instance = -1
-    prev_instance = -1
+    pid = NONE
+    start = NONE
+    end = NONE
+    instance = NONE
+    prev_instance = NONE
     
     for line in reader:
-        if pid == -1: pid = line[1]
+        if pid == NONE: pid = line[1]
         cur_start = line[2]
         cur_end = line[3]
         cur_instance = line[4]
         
-        if instance == -1:
+        if instance == NONE:
             start = cur_start
             end = cur_end
             instance = cur_instance    
@@ -158,14 +159,36 @@ def get_node_instance_info(log_file):
                 end = cur_end
             else:
                 node_instance_info.append({'instance':instance, 'start':float(start), 'end':float(end)})
-                instance = -1
+                instance = NONE
         
         prev_instance = line[4]
     
     return pid, node_instance_info
     
 
-def add_instance_info(per_cpu_info, autoware_log_dir):
+def get_e2e_instance_info(log_path):
+    log_file = open(log_path)
+    reader = csv.reader(log_file)
+    next(reader)
+
+    e2e_instance_info = []
+    
+    instance = NONE
+    start = NONE
+    end = NONE
+
+    for line in reader:
+        instance = line[0]
+        start = line[1]
+        end = line[2]
+
+        e2e_instance_info.append({'instance':int(instance), 'start':float(start), 'end':float(end)})
+
+    return e2e_instance_info
+
+def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
+    e2e_instance_info = get_e2e_instance_info(autoware_e2e_log_path)
+
     for log_path in glob.glob(os.path.join(autoware_log_dir, '*.csv')):
         node_name = log_path.split('/')[-1].split('.')[0]
         
@@ -173,13 +196,10 @@ def add_instance_info(per_cpu_info, autoware_log_dir):
             for name in per_cpu_info[core]:
                 if not str_match_from_front(name, node_name): continue
                 
-                log_file = open(log_path)
-                pid, node_instance_info = get_node_instance_info(log_file)
-
                 for sched_info in per_cpu_info[core][name]:
-                    if str(sched_info['PID']) != pid: continue
+                    if sched_info['Instance'] != NONE: continue                
                     
-                    for i, instance_info in enumerate(node_instance_info):    
+                    for i, instance_info in enumerate(e2e_instance_info):    
                         # case1:                                            
                         #     sched               |-----| 
                         #     inst    |-----|
@@ -253,17 +273,25 @@ if __name__ == "__main__":
 
     file_path = os.path.dirname(os.path.realpath(__file__))[0:-7]
 
-    file = open(file_path + "/sample/sample.txt", "r")
+    # input: Ftrace log - data/sample_autoware_log/sample_autoware_ftrace_log.txt
+    file = open(file_path + 'data/sample_autoware_log/sample_autoware_ftrace_log.txt', 'r')
+
+    # input: Dir of Autwoare csv logs - data/sample_autoware_log
     autoware_log_dir = file_path + 'data/sample_autoware_log'
+
+    # input: e2e file - data/sample_autoware_log/system_instance.csv
+    autoware_e2e_log_path = file_path + 'data/sample_autoware_log/system_instance.csv'
 
     per_cpu_info, process_name = parse_ftrace_log(file ,process_name)
     per_cpu_info, max_time = update_per_process_info(per_cpu_info, process_name)
     per_cpu_info = filtering_process_info(per_cpu_info)
-    per_cpu_info = add_instance_info(per_cpu_info, autoware_log_dir)
+    per_cpu_info = add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path)
 
-    with open(file_path + "/data/sample.json", "w") as json_file:
+    # output: parsed log path - 'data/sample_autoware_parsed_log.json'
+    with open(file_path + '/data/sample_autoware_parsed_log.json', 'w') as json_file:
         json.dump(per_cpu_info, json_file, indent=4)
     
+    # output: filtering option file path - '/filtering_option.json'
     filtering_option = create_filtering_option(process_name)
-    with open(file_path + "/filtering_option.json", "w") as json_file:
+    with open(file_path + '/filtering_option.json', 'w') as json_file:
         json.dump(filtering_option, json_file, indent=4)

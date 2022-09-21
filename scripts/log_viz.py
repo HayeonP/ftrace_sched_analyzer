@@ -22,7 +22,7 @@ SKIP_THRESHOLD = 0.000005
 #   skip: Skip sched_info that duration is smaller than SKIP_THREASHOLD
 #   e2e: Shoe e2e instasnce range
 #   only_spin: Remove all ros thread which don't spin
-features = ['skip', 'only_spin']
+features = ['e2e', 'only_spin']
 ####################################
 
 def load_data(data_path, config_path):
@@ -73,11 +73,11 @@ def load_data(data_path, config_path):
     
     return sched_info_df
 
-def visualize_per_thread(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0]):
+def visualize_per_thread(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0], plot_height=400):
     config = dict({'scrollZoom': True})
 
     for core, core_df in tqdm(sched_info_df.groupby('Core')):
-        fig = px.bar(core_df, base='StartTime', x='Duration', y='Label', color='Label', hover_data=['Instance'])
+        fig = px.bar(core_df, base='StartTime', x='Duration', y='Label', color='Label', hover_data=['Instance'], height=plot_height)
         
         if 'skip' in features:
             title=core+' scheduling (Skip threshold: '+str(SKIP_THRESHOLD*1000)+'ms)'
@@ -86,7 +86,7 @@ def visualize_per_thread(sched_info_df, e2e_response_time_path='None', e2e_insta
             
         if 'e2e' in features:
             draw_e2e_instance(fig, e2e_response_time_path, e2e_instance_range)
-        
+
         fig.update_layout(
             title=title,
             xaxis_title="time (s)",
@@ -101,19 +101,20 @@ def visualize_per_thread(sched_info_df, e2e_response_time_path='None', e2e_insta
         
     return
 
-def visualize_per_cpu(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0]):
+def visualize_per_cpu(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0], plot_height=400):
     config = dict({'scrollZoom': True})
     
-    fig = px.bar(sched_info_df, base='StartTime', x='Duration', y='Core', color='Label', text='Label', hover_data=['EndTime', 'Instance'])
+    fig = px.bar(sched_info_df, base='StartTime', x='Duration', y='Core', color='Label', text='Label', hover_data=['EndTime', 'Instance'], height=plot_height)
 
     if 'skip' in features:
         title='Scheduling (Skip threshold: '+str(SKIP_THRESHOLD*1000)+'ms)'
     else:
         title='Scheduling'
-        
+    
     if 'e2e' in features:
         draw_e2e_instance(fig, e2e_response_time_path, e2e_instance_range)
-    
+    print(e2e_instance_range)
+
     fig.update_layout(
         title=title,
         xaxis_title="time (s)",
@@ -126,11 +127,11 @@ def visualize_per_cpu(sched_info_df, e2e_response_time_path='None', e2e_instance
             
     fig.show()
     
-def visualize_per_instance(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0]):
+def visualize_per_instance(sched_info_df, e2e_response_time_path='None', e2e_instance_range=[0,0], plot_height=400):
     config = dict({'scrollZoom': True})
     
     sched_info_df = sched_info_df[sched_info_df['Instance'] != -1]
-    fig = px.bar(sched_info_df, base='StartTime', x='Duration', y='Core', color='Instance', text='Label', hover_data=['EndTime', 'Instance'])
+    fig = px.bar(sched_info_df, base='StartTime', x='Duration', y='Core', color='Instance', text='Label', hover_data=['EndTime', 'Instance'], height=plot_height)
 
     if 'skip' in features:
         title='Scheduling per instance (Skip threshold: '+str(SKIP_THRESHOLD*1000)+'ms)'
@@ -159,7 +160,8 @@ def draw_e2e_instance(fig, e2e_response_time_path, e2e_instance_range):
     with open(e2e_response_time_path) as f:
         reader = csv.reader(f)
         for line in reader:
-            e2e_info.append({'Start':float(line[0]), 'End':float(line[1]), 'Instance':int(line[2])})
+            if 'response_time' in line: continue
+            e2e_info.append({'Start':float(line[1]), 'End':float(line[2]), 'Instance':int(line[0])})
     
     for e2e in e2e_info:
         if e2e['Instance'] >= e2e_instance_range[0] and e2e['Instance'] < e2e_instance_range[1]:
@@ -168,16 +170,25 @@ def draw_e2e_instance(fig, e2e_response_time_path, e2e_instance_range):
     return
 
 if __name__ == '__main__':
-    data_path = os.path.dirname(os.path.realpath(__file__))[0:-7] + "/data/sample.json"
+    # input: parsed log
+    data_path = os.path.dirname(os.path.realpath(__file__))[0:-7] + "data/sample_autoware_parsed_log.json"
+    
     # data_path = os.path.dirname(os.path.realpath(__file__))[0:-7] + "/data/ftrace_parse_data.json"
+
+    # input: filtering option
     config_path = os.path.dirname(os.path.realpath(__file__))[0:-7] + "/filtering_option.json"
     
-    e2e_response_time_path = '/Users/hayeonp/git/ftrace_sched_analyzer/data/sample_e2e.csv'
+    # input: e2e log. Use Autowar Analyzer
+    e2e_response_time_path = os.path.dirname(os.path.realpath(__file__))[0:-7] + 'data/sample_autoware_log/system_instance.csv'
+
+    # input: plot height, e2e_instance_range
+    plot_height = 500
+    e2e_instance_range = [6643, 6650]
 
     sched_info_df = load_data(data_path, config_path)
     if mode == 'per_thread':
-        visualize_per_thread(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=[895, 918])
+        visualize_per_thread(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=e2e_instance_range, plot_height=plot_height)
     elif mode == 'per_cpu':
-        visualize_per_cpu(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=[895, 918])
+        visualize_per_cpu(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=e2e_instance_range, plot_height=plot_height)
     elif mode == 'per_instance':
-        visualize_per_instance(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=[895, 918])
+        visualize_per_instance(sched_info_df, e2e_response_time_path=e2e_response_time_path, e2e_instance_range=e2e_instance_range, plot_height=plot_height)

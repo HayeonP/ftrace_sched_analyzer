@@ -1,5 +1,7 @@
 #!/bin/bash
 
+BUFFER_SIZE=1408 # Size of ftrace log buffer
+
 trace-cmd reset
 sleep 0.5
 echo "clear the trace buffers"
@@ -15,6 +17,10 @@ echo "events disabled"
 echo nop > /sys/kernel/debug/tracing/current_tracer
 sleep 0.5
 echo "nop tracer enabled"
+
+echo $BUFFER_SIZE > /sys/kernel/debug/tracing/buffer_size_kb
+sleep 0.5
+echo "Size of ftrace buffer = "$BUFFER_SIZE
 
 # echo 1 > /sys/kernel/debug/tracing/events/sched/sched_wakeup/enable
 echo 1 > /sys/kernel/debug/tracing/events/sched/sched_switch/enable
