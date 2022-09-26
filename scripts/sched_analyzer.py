@@ -11,7 +11,7 @@ import csv
 
 ############### TODO ###############
 # core number of your computer
-CPU_NUM = 12
+CPU_NUM = 8
 # analyze autoware node only
 ONLY_AUTOWARE = True
 ####################################
@@ -158,7 +158,7 @@ def get_node_instance_info(log_file):
             if cur_instance == prev_instance:
                 end = cur_end
             else:
-                node_instance_info.append({'instance':instance, 'start':float(start), 'end':float(end)})
+                node_instance_info.append({'Instance':instance, 'StartTime':float(start), 'EndTime':float(end)})
                 instance = NONE
         
         prev_instance = line[4]
@@ -182,71 +182,155 @@ def get_e2e_instance_info(log_path):
         start = line[1]
         end = line[2]
 
-        e2e_instance_info.append({'instance':int(instance), 'start':float(start), 'end':float(end)})
+        e2e_instance_info.append({'Instance':int(instance), 'StartTime':float(start), 'EndTime':float(end)})
 
     return e2e_instance_info
 
-def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
-    e2e_instance_info = get_e2e_instance_info(autoware_e2e_log_path)
+# def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
+#     e2e_instance_info = get_e2e_instance_info(autoware_e2e_log_path)
 
+#     for log_path in glob.glob(os.path.join(autoware_log_dir, '*.csv')):
+#         node_name = log_path.split('/')[-1].split('.')[0]
+        
+#         for core in per_cpu_info:
+#             for name in per_cpu_info[core]:
+#                 if not str_match_from_front(name, node_name): continue
+                
+#                 for sched_info in per_cpu_info[core][name]:
+#                     if sched_info['Instance'] != NONE: continue                
+                    
+#                     for i, instance_info in enumerate(e2e_instance_info):    
+#                         # case1:                                            
+#                         #     sched               |-----| 
+#                         #     inst    |-----|
+#                         if instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+#                             and instance_info['EndTime'] < sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+#                             continue
+#                         # case2: 
+#                         #     sched       |-----|
+#                         #     inst    |-----|
+#                         elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+#                             sched_info['Instance'] = instance_info['Instance']
+#                             sched_info['Case'] = 2
+#                             break
+#                         # case3:
+#                         #     sched     |-|
+#                         #     inst    |-----|
+#                         elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+#                             sched_info['Instance'] = instance_info['Instance']
+#                             sched_info['Case'] = 3
+#                             break
+#                         # case4:
+#                         #     sched   |-----|
+#                         #     inst      |-|
+#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+#                             sched_info['Instance'] = instance_info['Instance']
+#                             sched_info['Case'] = 4
+#                             break
+#                         # case5:
+#                         #     sched   |-----|
+#                         #     inst        |-----|
+#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+#                             sched_info['Instance'] = instance_info['Instance']
+#                             sched_info['Case'] = 5
+#                             break
+#                         # case6:  
+#                         #     sched   |-----|
+#                         #     inst                |-----|
+#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] >= sched_info['EndTime'] \
+#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+#                             sched_info['Instance'] = -1
+#                             sched_info['Case'] = 6
+#                             break
+    
+#     return per_cpu_info
+
+def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
+
+    per_node_instance_info = {}
+    node_name_list = []
+
+    # Get node instance info
     for log_path in glob.glob(os.path.join(autoware_log_dir, '*.csv')):
         node_name = log_path.split('/')[-1].split('.')[0]
-        
-        for core in per_cpu_info:
-            for name in per_cpu_info[core]:
-                if not str_match_from_front(name, node_name): continue
-                
-                for sched_info in per_cpu_info[core][name]:
-                    if sched_info['Instance'] != NONE: continue                
+        node_name_list.append(node_name)
+
+        per_node_instance_info[node_name] = []
+        with open(log_path) as f:
+            reader = csv.reader(f)
+            for line in reader:
+                if 'iter' in line: continue                
+                if len(line) < 7: break
+                per_node_instance_info[node_name].append({'Instance': float(line[4]), 'StartTime': float(line[2]), 'EndTime': float(line[3])})
+
+
+    for core in per_cpu_info:
+        for process_name in per_cpu_info[core]:
+            # Get target node instance info
+            target_node_instance_info = []
+            for node_name in node_name_list:
+                if not str_match_from_front(process_name, node_name): continue
+                else: target_node_instance_info = per_node_instance_info[node_name]
+
+            # Write instance info
+            for sched_info in per_cpu_info[core][process_name]:
+                if sched_info['Instance'] != NONE: continue                
+
+                for instance_info in target_node_instance_info:
+                    print(instance_info)
+                    print(sched_info)
+                    exit()
+                    # case1:                                            
+                    #     sched               |-----| 
+                    #     inst    |-----|
+                    if instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+                        and instance_info['EndTime'] < sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+                        continue
+                    # case2: 
+                    #     sched       |-----|
+                    #     inst    |-----|
+                    elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+                        sched_info['Instance'] = instance_info['Instance']
+                        sched_info['Case'] = 2
+                        break
+                    # case3:
+                    #     sched     |-|
+                    #     inst    |-----|
+                    elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+                        sched_info['Instance'] = instance_info['Instance']
+                        sched_info['Case'] = 3
+                        break
+                    # case4:
+                    #     sched   |-----|
+                    #     inst      |-|
+                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
+                        sched_info['Instance'] = instance_info['Instance']
+                        sched_info['Case'] = 4
+                        break
+                    # case5:
+                    #     sched   |-----|
+                    #     inst        |-----|
+                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
+                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+                        sched_info['Instance'] = instance_info['Instance']
+                        sched_info['Case'] = 5
+                        break
+                    # case6:  
+                    #     sched   |-----|
+                    #     inst                |-----|
+                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] >= sched_info['EndTime'] \
+                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
+                        sched_info['Instance'] = -1
+                        sched_info['Case'] = 6
+                        break
                     
-                    for i, instance_info in enumerate(e2e_instance_info):    
-                        # case1:                                            
-                        #     sched               |-----| 
-                        #     inst    |-----|
-                        if instance_info['start'] < sched_info['StartTime'] and instance_info['start'] < sched_info['EndTime'] \
-                            and instance_info['end'] < sched_info['StartTime'] and instance_info['end'] < sched_info['EndTime']:
-                            continue
-                        # case2: 
-                        #     sched       |-----|
-                        #     inst    |-----|
-                        elif instance_info['start'] < sched_info['StartTime'] and instance_info['start'] < sched_info['EndTime'] \
-                            and instance_info['end'] >= sched_info['StartTime'] and instance_info['end'] < sched_info['EndTime']:
-                            sched_info['Instance'] = instance_info['instance']
-                            sched_info['Case'] = 2
-                            break
-                        # case3:
-                        #     sched     |-|
-                        #     inst    |-----|
-                        elif instance_info['start'] < sched_info['StartTime'] and instance_info['start'] < sched_info['EndTime'] \
-                            and instance_info['end'] >= sched_info['StartTime'] and instance_info['end'] >= sched_info['EndTime']:
-                            sched_info['Instance'] = instance_info['instance']
-                            sched_info['Case'] = 3
-                            break
-                        # case4:
-                        #     sched   |-----|
-                        #     inst      |-|
-                        elif instance_info['start'] >= sched_info['StartTime'] and instance_info['start'] < sched_info['EndTime'] \
-                            and instance_info['end'] >= sched_info['StartTime'] and instance_info['end'] < sched_info['EndTime']:
-                            sched_info['Instance'] = instance_info['instance']
-                            sched_info['Case'] = 4
-                            break
-                        # case5:
-                        #     sched   |-----|
-                        #     inst        |-----|
-                        elif instance_info['start'] >= sched_info['StartTime'] and instance_info['start'] < sched_info['EndTime'] \
-                            and instance_info['end'] >= sched_info['StartTime'] and instance_info['end'] >= sched_info['EndTime']:
-                            sched_info['Instance'] = instance_info['instance']
-                            sched_info['Case'] = 5
-                            break
-                        # case6:  
-                        #     sched   |-----|
-                        #     inst                |-----|
-                        elif instance_info['start'] >= sched_info['StartTime'] and instance_info['start'] >= sched_info['EndTime'] \
-                            and instance_info['end'] >= sched_info['StartTime'] and instance_info['end'] >= sched_info['EndTime']:
-                            sched_info['Instance'] = -1
-                            sched_info['Case'] = 6
-                            break
-    
     return per_cpu_info
 
 if __name__ == "__main__":
@@ -274,13 +358,13 @@ if __name__ == "__main__":
     file_path = os.path.dirname(os.path.realpath(__file__))[0:-7]
 
     # input: Ftrace log - data/sample_autoware_log/sample_autoware_ftrace_log.txt
-    file = open(file_path + 'data/sample_autoware_log/sample_autoware_ftrace_log.txt', 'r')
+    file = open('/home/hypark/git/ExperimentTools/ftrace_sched_analyzer/ftrace/ftrace_log.txt', 'r')
 
     # input: Dir of Autwoare csv logs - data/sample_autoware_log
-    autoware_log_dir = file_path + 'data/sample_autoware_log'
+    autoware_log_dir = '/home/hypark/git/Autoware_Analyzer/files/response_time'
 
     # input: e2e file - data/sample_autoware_log/system_instance.csv
-    autoware_e2e_log_path = file_path + 'data/sample_autoware_log/system_instance.csv'
+    autoware_e2e_log_path = '/home/hypark/git/Autoware_Analyzer/files/response_time/system_instance.csv'
 
     per_cpu_info, process_name = parse_ftrace_log(file ,process_name)
     per_cpu_info, max_time = update_per_process_info(per_cpu_info, process_name)
@@ -288,7 +372,7 @@ if __name__ == "__main__":
     per_cpu_info = add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path)
 
     # output: parsed log path - 'data/sample_autoware_parsed_log.json'
-    with open(file_path + '/data/sample_autoware_parsed_log.json', 'w') as json_file:
+    with open(file_path + '/data/220923_autoware_parsed_log.json', 'w') as json_file:
         json.dump(per_cpu_info, json_file, indent=4)
     
     # output: filtering option file path - '/filtering_option.json'
