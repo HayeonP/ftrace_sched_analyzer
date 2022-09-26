@@ -13,7 +13,9 @@ import csv
 # core number of your computer
 CPU_NUM = 8
 # analyze autoware node only
-ONLY_AUTOWARE = True
+ONLY_AUTOWARE = False
+# time range
+time_range = [9321.0, 9323.0]
 ####################################
 
 # 
@@ -101,6 +103,8 @@ def update_per_process_info(cpu_info, process_name):
                             process_info['StartTime'] = per_cpu_start_info['cpu'+str(i)][process_name[k]][1]
                             process_info['EndTime'] = cpu_info['cpu'+str(i)][j][TIME]
                             process_info['Instance'] = NONE
+
+                            if process_info['StartTime'] < time_range[0] or process_info['EndTime'] > time_range[1]: break
 
                             per_cpu_info['cpu'+str(i)][process_name[k]].append(process_info)
 
@@ -281,9 +285,6 @@ def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
                 if sched_info['Instance'] != NONE: continue                
 
                 for instance_info in target_node_instance_info:
-                    print(instance_info)
-                    print(sched_info)
-                    exit()
                     # case1:                                            
                     #     sched               |-----| 
                     #     inst    |-----|

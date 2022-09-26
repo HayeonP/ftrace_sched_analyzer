@@ -21,7 +21,7 @@ SKIP_THRESHOLD = 0.000005
 # Additional features
 #   skip: Skip sched_info that duration is smaller than SKIP_THREASHOLD
 #   only_spin: Remove all ros thread which don't spin
-features = ['e2e', 'only_spin']
+features = ['e2e']
 target_cpu = ['cpu6', 'cpu7']
 ####################################
 
@@ -52,7 +52,8 @@ def load_data(data_path, config_path):
                 df['Core'] = core
                 df['PID'] = df['PID'].astype(int)
                 df['Name'] = str(name)
-                df['Label'] = str(name) + ' (' + df['PID'].astype(str) + ')'
+                # df['Label'] = str(name) + ' (' + df['PID'].astype(str) + ')'
+                df['Label'] = str(name)
                 df['Core'] = str(core)
                 df['Duration'] = df['EndTime'] - df['StartTime']                
                 df['StartTime'] = df['StartTime']
@@ -94,7 +95,7 @@ def get_facecolor(task_df):
 def visualize_per_cpu(sched_info_df, e2e_response_time_path):    
     cores = sched_info_df['Core'].unique()
 
-    fig, axis = plt.subplots(len(cores), 1, sharex=True, sharey=True)    
+    fig, axis = plt.subplots(len(cores), 1, sharex=True)    
 
     e2e_info_list = []
     with open(e2e_response_time_path) as f:
@@ -106,13 +107,17 @@ def visualize_per_cpu(sched_info_df, e2e_response_time_path):
     for plot_index, core in enumerate(cores):
         per_core_df = sched_info_df.loc[sched_info_df['Core'] == core]
         tasks = per_core_df['Label'].unique()
-        # tasks = np.append(tasks, str(core))
+        tasks = np.append(tasks, 'Total')
         
         yticks = range(len(tasks))
         yticks = [v*10+5 for v in yticks]
 
-        axis[plot_index].set_yticks(yticks)
-        axis[plot_index].set_yticklabels(tasks)
+        if len(cores) > 1:
+            axis[plot_index].set_yticks(yticks)
+            axis[plot_index].set_yticklabels(tasks)
+        else:
+            axis.set_yticks(yticks)
+            axis.set_yticklabels(tasks)
 
         for i, task in enumerate(tasks):
             if 'cpu' in task: continue
@@ -120,14 +125,21 @@ def visualize_per_cpu(sched_info_df, e2e_response_time_path):
 
             bar_info = [(task_df['StartTime'].iloc[j], task_df['Duration'].iloc[j]) for j in range(len(task_df))]               
             facecolor = get_facecolor(task_df)
-            axis[plot_index].broken_barh(bar_info, (yticks[i], 10),facecolor=facecolor)
+
+            if len(cores) > 1:
+                axis[plot_index].broken_barh(bar_info, (yticks[i], 10),facecolor=facecolor)
+            else:
+                axis.broken_barh(bar_info, (yticks[i], 10),facecolor=facecolor)
 
         # Plot core scheduling
-        # core_bar_info = [(per_core_df['StartTime'].iloc[j], per_core_df['Duration'].iloc[j]) for j in range(len(per_core_df))]
-        # axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
+        core_bar_info = [(per_core_df['StartTime'].iloc[j], per_core_df['Duration'].iloc[j]) for j in range(len(per_core_df))]
+        axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
 
         for e2e_info in e2e_info_list:
-            axis[plot_index].add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
+            if len(cores) > 1:
+                axis[plot_index].add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
+            else:
+                axis.add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
     
     fig.canvas.mpl_connect('button_press_event', lambda event: mouse_event(event, sched_info_df))
     plt.show()
