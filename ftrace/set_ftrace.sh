@@ -1,10 +1,6 @@
 #!/bin/bash
 
-<<<<<<< HEAD
 BUFFER_SIZE=800000 # Size of ftrace log buffer
-=======
-BUFFER_SIZE=80000 # Size of ftrace log buffer
->>>>>>> c11c468100dbec1f59f96a4fd19cfe2214cf9e5a
 
 trace-cmd reset
 sleep 0.5
