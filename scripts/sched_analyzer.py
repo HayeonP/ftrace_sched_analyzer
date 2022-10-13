@@ -187,6 +187,8 @@ def update_per_process_info(cpu_info, per_pid_instnace_info, process_name):
                             if len(time_range_) == 2: 
                                 if process_info['StartTime'] < time_range_[0] or process_info['EndTime'] > time_range_[1]: break                            
 
+                            if process_info['StartTime'] < time_range[0] or process_info['EndTime'] > time_range[1]: break
+
                             per_cpu_info['cpu'+str(i)][process_name[k]].append(process_info)
 
                             count_ = count_ + 1
