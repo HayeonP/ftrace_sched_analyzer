@@ -10,10 +10,26 @@ import glob
 import csv
 
 ############### TODO ###############
+
+# Input
+input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013_ftrace_log.txt'
+pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013_pid_info.json'
+start_process_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_test1.csv'
+end_process_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_test4.csv'
+
+# Output
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/221013_synthetic_task.json'
+filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_e2e_instance_response_time.json'
+
 # core number of your computer
 CPU_NUM = 8
-# analyze autoware node only
-ONLY_AUTOWARE = True
+# analyze target process only
+ONLY_TARGETS = False
+target_process_name_ = ['test1','test2','test3']
+# time range
+time_range_ = []
+
 ####################################
 
 # 
@@ -25,49 +41,98 @@ PREV_STAT = 4
 NEXT_COMM = 5
 NEXT_PID = 6
 NEXT_PRIO = 7
-NONE = -100
+NONE = -100.0
+
+def map_pid_to_process_name(process_name, pid, pid_name_info):    
+    for pid_mapped_process_name in pid_name_info:
+        if str(pid) in pid_name_info[pid_mapped_process_name]:
+            return pid_mapped_process_name
+
+    return process_name
 
 #
 count_ = 0
-def parse_ftrace_log(file, process_name):
+def parse_ftrace_log(file, process_name, pid_name_info_path):    
+    try:
+        pid_name_map_info = json.load(open(pid_name_info_path, 'r'))   
+    except:
+        pid_name_map_info = {}
+
     func_pattern = compile("{}[{}] {} {}: {}: {}")
     sched_switch_pattern = compile("{}[{}] {} {}: {}: prev_comm={} prev_pid={} prev_prio={} prev_state={} ==> next_comm={} next_pid={} next_prio={}")
+    update_sched_instance_pattern = compile('{}[{}] {} {}: {}: target_comm={}[{}] sched_instance={}')
 
     per_cpu_info = {}
+    per_pid_instnace_info = {}
     
     for i in range(CPU_NUM):
         per_cpu_info['cpu'+str(i)] = []
 
-    if not ONLY_AUTOWARE:
+    if not ONLY_TARGETS:
         process_name = []
 
     while True:
         line = file.readline()
+
         if not line:
             break
         
         result = func_pattern.parse(line)
         
         if result != None:
-            if result[4] == 'sched_switch':
-                sched_parse_result = sched_switch_pattern.parse(line)
+            event = result[4]
+            if event == 'sched_switch':
+                sched_switch_parse_result = sched_switch_pattern.parse(line)
+                cpu = int(sched_switch_parse_result[1])
+                time = float(sched_switch_parse_result[3])
+                prev_comm = sched_switch_parse_result[5]
+                prev_pid = int(sched_switch_parse_result[6])
+                prev_prio = int(sched_switch_parse_result[7])
+                prev_state = sched_switch_parse_result[8]
+                next_comm = sched_switch_parse_result[9]
+                next_pid = int(sched_switch_parse_result[10])
+                next_prio = int(sched_switch_parse_result[11])
 
-                per_cpu_info['cpu' + str(int(sched_parse_result[1]))].append((float(sched_parse_result[3]), sched_parse_result[5], int(sched_parse_result[6]),
-                                                                              int(sched_parse_result[7]), sched_parse_result[8], sched_parse_result[9],
-                                                                              int(sched_parse_result[10]), int(sched_parse_result[11])))
+                prev_comm = map_pid_to_process_name(prev_comm, prev_pid, pid_name_map_info)
+                next_comm = map_pid_to_process_name(next_comm, next_pid, pid_name_map_info)
 
-                if not ONLY_AUTOWARE:
+                per_cpu_info['cpu' + str(cpu)].append((time, prev_comm, prev_pid, prev_prio, prev_state, next_comm, next_pid, next_prio))
+
+                if not ONLY_TARGETS:
                     already_exist = False
                     for i in range(len(process_name)):
-                        if process_name[i] == sched_parse_result[5]:
+                        if process_name[i] == prev_comm:
                             already_exist = True
                     if not already_exist:
-                        if not sched_parse_result[5][0:7] == "swapper":
-                            process_name.append(sched_parse_result[5])
-    
-    return per_cpu_info, process_name
+                        if not prev_comm[0:7] == "swapper":
+                            process_name.append(prev_comm)
+            elif event == 'update_sched_instance':
+                update_sched_instance_parse_result = update_sched_instance_pattern.parse(line)
+                cpu = int(update_sched_instance_parse_result[1])
+                time = float(update_sched_instance_parse_result[3])
+                target_comm=str(update_sched_instance_parse_result[5])
+                target_pid=int(update_sched_instance_parse_result[6])
+                sched_instance=int(update_sched_instance_parse_result[7])
+                if str(target_pid) not in per_pid_instnace_info: per_pid_instnace_info[str(target_pid)] = []
+                per_pid_instnace_info[str(target_pid)].append({'time': time, 'sched_instance': sched_instance})
 
-def update_per_process_info(cpu_info, process_name):
+    return per_cpu_info, per_pid_instnace_info, process_name
+
+def update_per_pid_cur_instance(cur_instance, instance_info):
+    idx = cur_instance['idx']
+    if idx + 1 <= len(instance_info) - 1:
+        cur_instance['idx'] = idx + 1
+        cur_instance['time'] = float(instance_info[idx]['time'])
+        cur_instance['next_time'] = float(instance_info[idx+1]['time'])
+        cur_instance['sched_instance']= instance_info[idx]['sched_instance']
+    elif idx + 1 > len(instance_info) - 1: # No next enry in instance_info
+        cur_instance['idx'] = idx
+        cur_instance['time'] = float(instance_info[idx]['time'])
+        cur_instance['next_time'] = NONE
+        cur_instance['sched_instance']= NONE
+    return cur_instance
+
+def update_per_process_info(cpu_info, per_pid_instnace_info, process_name):
     global count_
     per_cpu_info, per_cpu_start_info = {}, {}
     per_process_info, per_process_start_info = {}, {}
@@ -81,6 +146,11 @@ def update_per_process_info(cpu_info, process_name):
         per_cpu_info['cpu'+str(i)] = copy.deepcopy(per_process_info)
         per_cpu_start_info['cpu'+str(i)] = per_process_start_info
 
+    per_pid_cur_instnace = {}
+    for key in per_pid_instnace_info:
+        per_pid_cur_instnace[key] = {'idx': 0, 'time': float(per_pid_instnace_info[key][0]['time']), 'next_time': float(per_pid_instnace_info[key][1]['time']),'sched_instance': per_pid_instnace_info[key][0]['sched_instance']}
+
+    
     max_time = 0.0
     for i in range(CPU_NUM):
         for j in range(len(cpu_info['cpu'+str(i)])):
@@ -97,10 +167,25 @@ def update_per_process_info(cpu_info, process_name):
                             
                             process_info = {}
                             process_info['Count'] = count_
-                            process_info['PID'] = per_cpu_start_info['cpu'+str(i)][process_name[k]][2]
-                            process_info['StartTime'] = per_cpu_start_info['cpu'+str(i)][process_name[k]][1]
-                            process_info['EndTime'] = cpu_info['cpu'+str(i)][j][TIME]
-                            process_info['Instance'] = NONE
+                            process_info['PID'] = int(per_cpu_start_info['cpu'+str(i)][process_name[k]][2])
+                            process_info['StartTime'] = float(per_cpu_start_info['cpu'+str(i)][process_name[k]][1])
+                            process_info['EndTime'] = float(cpu_info['cpu'+str(i)][j][TIME])
+
+                            
+                            # Set sched instance info
+                            while(True):
+                                if str(process_info['PID']) not in per_pid_cur_instnace or per_pid_cur_instnace[str(process_info['PID'])]['sched_instance'] == NONE:
+                                    process_info['Instance'] = NONE
+                                    break
+                                elif process_info['EndTime'] <= per_pid_cur_instnace[str(process_info['PID'])]['next_time']: 
+                                    process_info['Instance'] = per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
+                                    break
+                                elif process_info['EndTime'] > per_pid_cur_instnace[str(process_info['PID'])]['next_time']: 
+                                    per_pid_cur_instnace[process_info['PID']] = update_per_pid_cur_instance(per_pid_cur_instnace[str(process_info['PID'])], per_pid_instnace_info[str(process_info['PID'])])
+                                    process_info['Instance'] = per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']                                  
+
+                            if len(time_range_) == 2: 
+                                if process_info['StartTime'] < time_range_[0] or process_info['EndTime'] > time_range_[1]: break                            
 
                             per_cpu_info['cpu'+str(i)][process_name[k]].append(process_info)
 
@@ -165,217 +250,59 @@ def get_node_instance_info(log_file):
     
     return pid, node_instance_info
     
+def get_e2e_instance_response_time(start_path, end_path):
+    start_file = open(start_path, 'r')
+    end_file = open(end_path, 'r')
+    start_reader = csv.reader(start_file)
+    end_reader = csv.reader(end_file)
 
-def get_e2e_instance_info(log_path):
-    log_file = open(log_path)
-    reader = csv.reader(log_file)
-    next(reader)
-
-    e2e_instance_info = []
+    e2e_instance_response_time = {}
+    for line in end_reader:
+        if 'instance' in line: continue
+        pid = int(line[0])
+        start = float(line[1])
+        end = float(line[2])
+        instance = int(line[3])
+        if str(instance) not in e2e_instance_response_time:
+            e2e_instance_response_time[str(instance)] = {'start': -1, 'end': end}
+            continue
+        if float(e2e_instance_response_time[str(instance)]['end']) > end:
+            e2e_instance_response_time[str(instance)]['end'] = end
     
-    instance = NONE
-    start = NONE
-    end = NONE
-
-    for line in reader:
-        instance = line[0]
+    for line in start_reader:
+        if 'instance' in line: continue
+        pid = line[0]
         start = line[1]
         end = line[2]
+        instance = line[3]
+        if str(instance) not in e2e_instance_response_time: continue
+        if e2e_instance_response_time[str(instance)]['start'] < 0: e2e_instance_response_time[str(instance)]['start'] = start # NONE
+        elif e2e_instance_response_time[str(instance)]['start'] > start: e2e_instance_response_time[str(instance)]['start'] = start
 
-        e2e_instance_info.append({'Instance':int(instance), 'StartTime':float(start), 'EndTime':float(end)})
+    remove_target_instnace = []
+    for instance in e2e_instance_response_time:
+        if e2e_instance_response_time[str(instance)]['start'] == NONE: remove_target_instnace.append(instance)
+    for target in remove_target_instnace:
+        e2e_instance_response_time.pop(target, 0)
 
-    return e2e_instance_info
-
-# def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
-#     e2e_instance_info = get_e2e_instance_info(autoware_e2e_log_path)
-
-#     for log_path in glob.glob(os.path.join(autoware_log_dir, '*.csv')):
-#         node_name = log_path.split('/')[-1].split('.')[0]
-        
-#         for core in per_cpu_info:
-#             for name in per_cpu_info[core]:
-#                 if not str_match_from_front(name, node_name): continue
-                
-#                 for sched_info in per_cpu_info[core][name]:
-#                     if sched_info['Instance'] != NONE: continue                
-                    
-#                     for i, instance_info in enumerate(e2e_instance_info):    
-#                         # case1:                                            
-#                         #     sched               |-----| 
-#                         #     inst    |-----|
-#                         if instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-#                             and instance_info['EndTime'] < sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-#                             continue
-#                         # case2: 
-#                         #     sched       |-----|
-#                         #     inst    |-----|
-#                         elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-#                             sched_info['Instance'] = instance_info['Instance']
-#                             sched_info['Case'] = 2
-#                             break
-#                         # case3:
-#                         #     sched     |-|
-#                         #     inst    |-----|
-#                         elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-#                             sched_info['Instance'] = instance_info['Instance']
-#                             sched_info['Case'] = 3
-#                             break
-#                         # case4:
-#                         #     sched   |-----|
-#                         #     inst      |-|
-#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-#                             sched_info['Instance'] = instance_info['Instance']
-#                             sched_info['Case'] = 4
-#                             break
-#                         # case5:
-#                         #     sched   |-----|
-#                         #     inst        |-----|
-#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-#                             sched_info['Instance'] = instance_info['Instance']
-#                             sched_info['Case'] = 5
-#                             break
-#                         # case6:  
-#                         #     sched   |-----|
-#                         #     inst                |-----|
-#                         elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] >= sched_info['EndTime'] \
-#                             and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-#                             sched_info['Instance'] = -1
-#                             sched_info['Case'] = 6
-#                             break
-    
-#     return per_cpu_info
-
-def add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path):
-
-    per_node_instance_info = {}
-    node_name_list = []
-
-    # Get node instance info
-    for log_path in glob.glob(os.path.join(autoware_log_dir, '*.csv')):
-        node_name = log_path.split('/')[-1].split('.')[0]
-        node_name_list.append(node_name)
-
-        per_node_instance_info[node_name] = []
-        with open(log_path) as f:
-            reader = csv.reader(f)
-            for line in reader:
-                if 'iter' in line: continue                
-                if len(line) < 7: break
-                per_node_instance_info[node_name].append({'Instance': float(line[4]), 'StartTime': float(line[2]), 'EndTime': float(line[3])})
-
-
-    for core in per_cpu_info:
-        for process_name in per_cpu_info[core]:
-            # Get target node instance info
-            target_node_instance_info = []
-            for node_name in node_name_list:
-                if not str_match_from_front(process_name, node_name): continue
-                else: target_node_instance_info = per_node_instance_info[node_name]
-
-            # Write instance info
-            for sched_info in per_cpu_info[core][process_name]:
-                if sched_info['Instance'] != NONE: continue                
-
-                for instance_info in target_node_instance_info:
-                    print(instance_info)
-                    print(sched_info)
-                    exit()
-                    # case1:                                            
-                    #     sched               |-----| 
-                    #     inst    |-----|
-                    if instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-                        and instance_info['EndTime'] < sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-                        continue
-                    # case2: 
-                    #     sched       |-----|
-                    #     inst    |-----|
-                    elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-                        sched_info['Instance'] = instance_info['Instance']
-                        sched_info['Case'] = 2
-                        break
-                    # case3:
-                    #     sched     |-|
-                    #     inst    |-----|
-                    elif instance_info['StartTime'] < sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-                        sched_info['Instance'] = instance_info['Instance']
-                        sched_info['Case'] = 3
-                        break
-                    # case4:
-                    #     sched   |-----|
-                    #     inst      |-|
-                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] < sched_info['EndTime']:
-                        sched_info['Instance'] = instance_info['Instance']
-                        sched_info['Case'] = 4
-                        break
-                    # case5:
-                    #     sched   |-----|
-                    #     inst        |-----|
-                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] < sched_info['EndTime'] \
-                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-                        sched_info['Instance'] = instance_info['Instance']
-                        sched_info['Case'] = 5
-                        break
-                    # case6:  
-                    #     sched   |-----|
-                    #     inst                |-----|
-                    elif instance_info['StartTime'] >= sched_info['StartTime'] and instance_info['StartTime'] >= sched_info['EndTime'] \
-                        and instance_info['EndTime'] >= sched_info['StartTime'] and instance_info['EndTime'] >= sched_info['EndTime']:
-                        sched_info['Instance'] = -1
-                        sched_info['Case'] = 6
-                        break
-                    
-    return per_cpu_info
+    return e2e_instance_response_time
 
 if __name__ == "__main__":
-    # matplotlib.use("TkAgg")
-
-    process_name = [
-                "republish",
-                "op_global_plann",
-                "op_trajectory_g",
-                "op_trajectory_e",
-                "op_behavior_sel",
-                "ray_ground_filt",
-                "lidar_euclidean",
-                "imm_ukf_pda",
-                "op_motion_predi",
-                "lidar_republish",
-                "voxel_grid_filt",
-                "ndt_matching",
-                "relay",
-                "rubis_pose_rela",
-                "pure_pursuit",
-                "twist_filter",
-                "twist_gate"]
-
     file_path = os.path.dirname(os.path.realpath(__file__))[0:-7]
 
-    # input: Ftrace log - data/sample_autoware_log/sample_autoware_ftrace_log.txt
-    file = open('/home/hypark/git/ExperimentTools/ftrace_sched_analyzer/ftrace/ftrace_log.txt', 'r')
+    file = open(input_ftrace_log_path_, 'r')
 
-    # input: Dir of Autwoare csv logs - data/sample_autoware_log
-    autoware_log_dir = '/home/hypark/git/Autoware_Analyzer/files/response_time'
-
-    # input: e2e file - data/sample_autoware_log/system_instance.csv
-    autoware_e2e_log_path = '/home/hypark/git/Autoware_Analyzer/files/response_time/system_instance.csv'
-
-    per_cpu_info, process_name = parse_ftrace_log(file ,process_name)
-    per_cpu_info, max_time = update_per_process_info(per_cpu_info, process_name)
-    per_cpu_info = filtering_process_info(per_cpu_info)
-    per_cpu_info = add_instance_info(per_cpu_info, autoware_log_dir, autoware_e2e_log_path)
-
-    # output: parsed log path - 'data/sample_autoware_parsed_log.json'
-    with open(file_path + '/data/220923_autoware_parsed_log.json', 'w') as json_file:
+    per_cpu_info, per_pid_instnace_info, process_name = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
+    per_cpu_info, max_time = update_per_process_info(per_cpu_info, per_pid_instnace_info, process_name)
+    per_cpu_info = filtering_process_info(per_cpu_info)    
+    
+    with open(parsed_log_path_, 'w') as json_file:
         json.dump(per_cpu_info, json_file, indent=4)
     
-    # output: filtering option file path - '/filtering_option.json'
     filtering_option = create_filtering_option(process_name)
-    with open(file_path + '/filtering_option.json', 'w') as json_file:
+    with open(filtering_option_path_, 'w') as json_file:
         json.dump(filtering_option, json_file, indent=4)
+
+    e2e_instance_response_time = get_e2e_instance_response_time(start_process_response_time_path_, end_process_response_time_path_)
+    with open(e2e_instance_response_time_path_, 'w') as json_file:
+        json.dump(e2e_instance_response_time, json_file, indent=4)
