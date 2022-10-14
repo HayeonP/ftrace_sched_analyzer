@@ -13,15 +13,15 @@ import collections
 ############### TODO ###############
 
 # Input
-input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/ftrace_log.txt'
-pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/pid_info.json'
+input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/ftrace_log.txt'
+pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/pid_info.json'
 start_process_name_ = 'test1'
 end_process_name_ = 'test4'
 
 # Output
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
@@ -283,12 +283,10 @@ def get_e2e_instance_response_time(per_cpu_info, start_process, end_process, pid
                     if  e2e_instance_response_time[instance]['end'] < 0 or e2e_instance_response_time[instance]['end'] < info['EndTime']:
                         e2e_instance_response_time[instance]['end'] = info['EndTime']
                         continue
-                if process == start_process and pid == pid_of_instance_processes[start_process]: print(instance, e2e_instance_response_time[instance]['start'])
 
     remove_targets = []
     for instance in e2e_instance_response_time:
         if float(e2e_instance_response_time[instance]['start']) < 0 or float(e2e_instance_response_time[instance]['end']) < 0:
-            print(instance, e2e_instance_response_time[instance])
             remove_targets.append(instance)
 
     for target in remove_targets:
