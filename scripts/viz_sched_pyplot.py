@@ -16,14 +16,16 @@ import copy
 ############### TODO ###############
 
 # input
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/221013_synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/e2e_instance_response_time.json'
 
 # Skip threshold (s)
 SKIP_THRESHOLD = 0.000005
 # Additional features
 #   skip: Skip sched_info that duration is smaller than SKIP_THREASHOLD
-features = []
+#   e2e: Plot e2e box
+features = ['e2e']
 target_cpu = ['cpu6', 'cpu7']
 time_range = []
 
@@ -97,7 +99,7 @@ def get_facecolor(task_df):
 
     return facecolor
 
-def visualize_per_cpu(sched_info_df):    
+def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):    
     cores = sched_info_df['Core'].unique()
 
     fig, axis = plt.subplots(len(cores), 1, sharex=True)
@@ -105,12 +107,21 @@ def visualize_per_cpu(sched_info_df):
     for ax in axis:
         ax.get_xaxis().set_major_formatter(FormatStrFormatter('%.5f'))
 
-    # e2e_info_list = []
-    # with open(e2e_response_time_path) as f:
-    #     reader = csv.reader(f)
-    #     for line in reader:
-    #         if 'instance' in line: continue
-    #         e2e_info_list.append({'Instance': int(line[0]), 'StartTime': float(line[1]), 'EndTime': float(line[2]), 'Duration': float(line[3])})
+    with open(e2e_instance_response_time_path) as f:
+        e2e_instance_respnose_time_info = json.load(f)
+    
+    earliest_start_time = float(sched_info_df.min()['StartTime'])
+    latest_end_time = float(sched_info_df.max()['EndTime'])
+
+    e2e_info_list = []
+    if 'e2e' in features:
+        for instance in e2e_instance_respnose_time_info:
+            if float(e2e_instance_respnose_time_info[instance]['start']) < earliest_start_time or float(e2e_instance_respnose_time_info[instance]['start']) > latest_end_time: continue
+            e2e_info_list.append({  'Instance': int(instance), 
+                                    'StartTime': float(e2e_instance_respnose_time_info[instance]['start']), 
+                                    'EndTime': float(e2e_instance_respnose_time_info[instance]['end']), 
+                                    'Duration': float(e2e_instance_respnose_time_info[instance]['end']) - float(e2e_instance_respnose_time_info[instance]['start'])
+                                })
 
     for plot_index, core in enumerate(cores):
         per_core_df = sched_info_df.loc[sched_info_df['Core'] == core]
@@ -147,34 +158,21 @@ def visualize_per_cpu(sched_info_df):
         core_bar_info = [(per_core_df['StartTime'].iloc[j], per_core_df['Duration'].iloc[j]) for j in range(len(per_core_df))]
         axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
                 
-        # instance_plot_value = [[0, yticks[-1]+10], [20, yticks[-3]+10], [40, yticks[-5]+10], [60, yticks[-7]+10], [80, yticks[-9]+10]]
-        # for e2e_info in e2e_info_list:
-        #     if len(cores) > 1:
-        #         axis[plot_index].add_patch(Rectangle((e2e_info['StartTime'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][0]), e2e_info['Duration'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][1], edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
-        #     else:
-        #         axis.add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
+        instance_plot_value = [[0, yticks[-1]+10], [20, yticks[-3]+10], [40, yticks[-5]+10], [60, yticks[-7]+10], [80, yticks[-9]+10]]
+
+        if 'e2e' in features:
+            for e2e_info in e2e_info_list:
+                if len(cores) > 1:
+                    axis[plot_index].add_patch(Rectangle((e2e_info['StartTime'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][0]), e2e_info['Duration'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][1], edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
+                else:
+                    axis.add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
     
     fig.canvas.mpl_connect('button_press_event', lambda event: mouse_event(event, sched_info_df))
     plt.show()
 
-def draw_e2e_instance(fig, e2e_response_time_path, e2e_instance_range):
-    if e2e_response_time_path == 'None': return
-    
-    e2e_info = []
-    with open(e2e_response_time_path) as f:
-        reader = csv.reader(f)
-        for line in reader:
-            if 'response_time' in line: continue
-            e2e_info.append({'Start':float(line[1]), 'End':float(line[2]), 'Instance':int(line[0])})
-    
-    for e2e in e2e_info:
-        if e2e['Instance'] >= e2e_instance_range[0] and e2e['Instance'] < e2e_instance_range[1]:
-            fig.add_vrect(x0=e2e['Start'], x1=e2e['End'], annotation_text=e2e['Instance'], annotation_position='top left', fillcolor='green', opacity=0.1, line_width=3)
-            
-    return
 
 if __name__ == '__main__':
     sched_info_df = load_data(parsed_log_path_, filtering_option_path_)
 
-    visualize_per_cpu(sched_info_df)
+    visualize_per_cpu(sched_info_df, e2e_instance_response_time_path_)
     

@@ -12,21 +12,21 @@ import csv
 ############### TODO ###############
 
 # Input
-input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013_ftrace_log.txt'
-pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013_pid_info.json'
-start_process_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_test1.csv'
-end_process_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_test4.csv'
+input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/ftrace_log.txt'
+pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/pid_info.json'
+start_process_name_ = 'test1'
+end_process_name_ = 'test4'
 
 # Output
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/221013_synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2_e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
 # analyze target process only
 ONLY_TARGETS = False
-target_process_name_ = ['test1','test2','test3']
+target_process_name_ = ['test1','test2','test3','test4']
 # time range
 time_range_ = []
 
@@ -58,6 +58,10 @@ def parse_ftrace_log(file, process_name, pid_name_info_path):
     except:
         pid_name_map_info = {}
 
+    pid_of_instance_processes ={}
+    for name in pid_name_map_info:
+        pid_of_instance_processes[name] = min(pid_name_map_info[name])
+    
     func_pattern = compile("{}[{}] {} {}: {}: {}")
     sched_switch_pattern = compile("{}[{}] {} {}: {}: prev_comm={} prev_pid={} prev_prio={} prev_state={} ==> next_comm={} next_pid={} next_prio={}")
     update_sched_instance_pattern = compile('{}[{}] {} {}: {}: target_comm={}[{}] sched_instance={}')
@@ -116,7 +120,7 @@ def parse_ftrace_log(file, process_name, pid_name_info_path):
                 if str(target_pid) not in per_pid_instnace_info: per_pid_instnace_info[str(target_pid)] = []
                 per_pid_instnace_info[str(target_pid)].append({'time': time, 'sched_instance': sched_instance})
 
-    return per_cpu_info, per_pid_instnace_info, process_name
+    return per_cpu_info, per_pid_instnace_info, process_name, pid_of_instance_processes
 
 def update_per_pid_cur_instance(cur_instance, instance_info):
     idx = cur_instance['idx']
@@ -187,8 +191,6 @@ def update_per_process_info(cpu_info, per_pid_instnace_info, process_name):
                             if len(time_range_) == 2: 
                                 if process_info['StartTime'] < time_range_[0] or process_info['EndTime'] > time_range_[1]: break                            
 
-                            if process_info['StartTime'] < time_range[0] or process_info['EndTime'] > time_range[1]: break
-
                             per_cpu_info['cpu'+str(i)][process_name[k]].append(process_info)
 
                             count_ = count_ + 1
@@ -252,49 +254,62 @@ def get_node_instance_info(log_file):
     
     return pid, node_instance_info
     
-def get_e2e_instance_response_time(start_path, end_path):
-    start_file = open(start_path, 'r')
-    end_file = open(end_path, 'r')
-    start_reader = csv.reader(start_file)
-    end_reader = csv.reader(end_file)
-
+def get_e2e_instance_response_time(per_cpu_info, start_process, end_process, pid_of_instance_processes):
     e2e_instance_response_time = {}
-    for line in end_reader:
-        if 'instance' in line: continue
-        pid = int(line[0])
-        start = float(line[1])
-        end = float(line[2])
-        instance = int(line[3])
-        if str(instance) not in e2e_instance_response_time:
-            e2e_instance_response_time[str(instance)] = {'start': -1, 'end': end}
-            continue
-        if float(e2e_instance_response_time[str(instance)]['end']) > end:
-            e2e_instance_response_time[str(instance)]['end'] = end
     
-    for line in start_reader:
-        if 'instance' in line: continue
-        pid = line[0]
-        start = line[1]
-        end = line[2]
-        instance = line[3]
-        if str(instance) not in e2e_instance_response_time: continue
-        if e2e_instance_response_time[str(instance)]['start'] < 0: e2e_instance_response_time[str(instance)]['start'] = start # NONE
-        elif e2e_instance_response_time[str(instance)]['start'] > start: e2e_instance_response_time[str(instance)]['start'] = start
+    for cpu in per_cpu_info:
+        for process in per_cpu_info[cpu]:
+            for info in per_cpu_info[cpu][process]:
+                if int(info['Instance']) < 0: continue
+                instance = str(info['Instance'])
+                pid = str(info['PID'])
+                if process == start_process and pid == pid_of_instance_processes[start_process]:
+                    if instance not in e2e_instance_response_time:
+                        e2e_instance_response_time[instance] = {'start': -100.0, 'end': -100.0}
 
-    remove_target_instnace = []
-    for instance in e2e_instance_response_time:
-        if e2e_instance_response_time[str(instance)]['start'] == NONE: remove_target_instnace.append(instance)
-    for target in remove_target_instnace:
-        e2e_instance_response_time.pop(target, 0)
+                    if  e2e_instance_response_time[instance]['start'] < 0 or e2e_instance_response_time[instance]['start'] > info['StartTime']:
+                        e2e_instance_response_time[instance]['start'] = info['StartTime']
+
+                elif process == end_process and pid == pid_of_instance_processes[end_process]:
+                    if instance not in e2e_instance_response_time:
+                        e2e_instance_response_time[instance] = {'start': -100.0, 'end': -100.0}
+
+                    if  e2e_instance_response_time[instance]['end'] < 0 or e2e_instance_response_time[instance]['end'] < info['EndTime']:
+                        e2e_instance_response_time[instance]['end'] = info['EndTime']
+
+    remove_targets = []
+    for instance in e2e_instance_response_time:        
+        if float(e2e_instance_response_time[instance]['start']) < 0 or float(e2e_instance_response_time[instance]['end']) < 0: remove_targets.append(instance)
+    
+    for target in remove_targets:
+        e2e_instance_response_time.pop(target)
 
     return e2e_instance_response_time
+
+def analyze_e2e_instance_response_time(e2e_instance_response_time):
+    maximum = 0
+    max_instance = 0
+    avg = 0
+    
+    for instance in e2e_instance_response_time:
+        if float(e2e_instance_response_time[instance]['start']) < 0 or  float(e2e_instance_response_time[instance]['end']) < 0: continue        
+        cur_reseponse_time = float(e2e_instance_response_time[instance]['end']) - float(e2e_instance_response_time[instance]['start'])
+        if maximum < cur_reseponse_time:
+            maximum = cur_reseponse_time
+            max_instance = instance
+        avg = cur_reseponse_time + avg
+    avg = avg / len(e2e_instance_response_time)
+    
+    print('[INFO] Max e2e:', maximum,' / Max instance:', max_instance, ' / Avg e2e:', avg)
+
+    return
 
 if __name__ == "__main__":
     file_path = os.path.dirname(os.path.realpath(__file__))[0:-7]
 
     file = open(input_ftrace_log_path_, 'r')
 
-    per_cpu_info, per_pid_instnace_info, process_name = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
+    per_cpu_info, per_pid_instnace_info, process_name, pid_of_instance_processes = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
     per_cpu_info, max_time = update_per_process_info(per_cpu_info, per_pid_instnace_info, process_name)
     per_cpu_info = filtering_process_info(per_cpu_info)    
     
@@ -305,6 +320,8 @@ if __name__ == "__main__":
     with open(filtering_option_path_, 'w') as json_file:
         json.dump(filtering_option, json_file, indent=4)
 
-    e2e_instance_response_time = get_e2e_instance_response_time(start_process_response_time_path_, end_process_response_time_path_)
+    e2e_instance_response_time = get_e2e_instance_response_time(per_cpu_info, start_process_name_, end_process_name_, pid_of_instance_processes)
+    analyze_e2e_instance_response_time(e2e_instance_response_time)
+
     with open(e2e_instance_response_time_path_, 'w') as json_file:
         json.dump(e2e_instance_response_time, json_file, indent=4)
