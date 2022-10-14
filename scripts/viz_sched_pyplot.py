@@ -16,9 +16,9 @@ import copy
 ############### TODO ###############
 
 # input
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221014_FIFO_chain2/e2e_instance_response_time.json'
 
 # Skip threshold (s)
 SKIP_THRESHOLD = 0.000005
@@ -104,8 +104,11 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
 
     fig, axis = plt.subplots(len(cores), 1, sharex=True)
 
-    for ax in axis:
-        ax.get_xaxis().set_major_formatter(FormatStrFormatter('%.5f'))
+    if len(cores) ==  1:
+        axis.get_xaxis().set_major_formatter(FormatStrFormatter('%.5f'))
+    else:
+        for ax in axis:
+            ax.get_xaxis().set_major_formatter(FormatStrFormatter('%.5f'))
 
     with open(e2e_instance_response_time_path) as f:
         e2e_instance_respnose_time_info = json.load(f)
@@ -156,9 +159,15 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
 
         # Plot core scheduling
         core_bar_info = [(per_core_df['StartTime'].iloc[j], per_core_df['Duration'].iloc[j]) for j in range(len(per_core_df))]
-        axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
-                
-        instance_plot_value = [[0, yticks[-1]+10], [20, yticks[-3]+10], [40, yticks[-5]+10], [60, yticks[-7]+10], [80, yticks[-9]+10]]
+
+        if len(cores) == 1:
+            axis.broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
+        else:
+            axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
+        
+        instance_plot_value = []
+        for i in [1, 3, 5, 7, 9]:
+            if len(yticks) >= i: instance_plot_value.append([(i - 1) * 20, yticks[i * -1]+10])
 
         if 'e2e' in features:
             for e2e_info in e2e_info_list:
