@@ -15,10 +15,12 @@ import copy
 
 ############### TODO ###############
 
+data_dir_name='temp'
+
 # input
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/e2e_instance_response_time.json'
 
 # Skip threshold (s)
 SKIP_THRESHOLD = 0.000005

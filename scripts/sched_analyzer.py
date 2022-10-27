@@ -12,16 +12,18 @@ import collections
 
 ############### TODO ###############
 
+data_dir_name='temp'
+
 # Input
-input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/ftrace_log.txt'
-pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/pid_info.json'
+input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/ftrace_log.txt'
+pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/pid_info.json'
 start_process_name_ = 'test1'
 end_process_name_ = 'test4'
 
 # Output
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
