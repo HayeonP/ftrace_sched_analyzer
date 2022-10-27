@@ -16,9 +16,9 @@ import copy
 ############### TODO ###############
 
 # input
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/e2e_instance_response_time.json'
 
 # Skip threshold (s)
 SKIP_THRESHOLD = 0.000005
@@ -130,7 +130,7 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
         per_core_df = sched_info_df.loc[sched_info_df['Core'] == core]
         tasks = per_core_df['Label'].unique()
         tasks = np.append(tasks, 'Total')
-        
+
         yticks = range(len(tasks))
         yticks = [v*10+5 for v in yticks]
 
@@ -166,7 +166,7 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
             axis[plot_index].broken_barh(core_bar_info, (yticks[-1], 10), facecolor='k')
         
         instance_plot_value = []
-        for i in [1, 3, 5, 7, 9]:
+        for i in [1, 3, 5, 7]:
             if len(yticks) >= i: instance_plot_value.append([(i - 1) * 20, yticks[i * -1]+10])
 
         if 'e2e' in features:

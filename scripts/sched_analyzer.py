@@ -13,20 +13,20 @@ import collections
 ############### TODO ###############
 
 # Input
-input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/ftrace_log.txt'
-pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/pid_info.json'
+input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/ftrace_log.txt'
+pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/pid_info.json'
 start_process_name_ = 'test1'
 end_process_name_ = 'test4'
 
 # Output
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/synthetic_task.json'
+parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/synthetic_task.json'
 filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/221013-2/e2e_instance_response_time.json'
+e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/temp/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
 # analyze target process only
-ONLY_TARGETS = True
+ONLY_TARGETS = False
 target_process_name_ = ['test1','test2','test3','test4']
 # time range
 time_range_ = []
@@ -66,9 +66,11 @@ def parse_ftrace_log(file, process_name, pid_name_info_path):
     func_pattern = compile("{}[{}] {} {}: {}: {}")
     sched_switch_pattern = compile("{}[{}] {} {}: {}: prev_comm={} prev_pid={} prev_prio={} prev_state={} ==> next_comm={} next_pid={} next_prio={}")
     update_sched_instance_pattern = compile('{}[{}] {} {}: {}: target_comm={}[{}] sched_instance={}')
+    debug_finish_job_pattern = compile('{}-{}[{}] {} {}: {}: instance={}')
 
     per_cpu_sched_switch_info = {}
     per_pid_instnace_info = {}
+    per_pid_job_finish_info = {}
 
     for i in range(CPU_NUM):
         per_cpu_sched_switch_info['cpu'+str(i)] = []
@@ -122,7 +124,18 @@ def parse_ftrace_log(file, process_name, pid_name_info_path):
                 if str(target_pid) not in per_pid_instnace_info: per_pid_instnace_info[str(target_pid)] = []
                 per_pid_instnace_info[str(target_pid)].append({'time': time, 'sched_instance': sched_instance})
 
-    return per_cpu_sched_switch_info, per_pid_instnace_info, process_name, pid_of_instance_processes
+            elif event == 'debug_finish_job':
+                debug_finish_job_result = debug_finish_job_pattern.parse(line)
+                cpu = int(debug_finish_job_result[2])
+                pid = int (debug_finish_job_result[1])
+                time = float(debug_finish_job_result[4])
+                comm = str(debug_finish_job_result[0])
+                instance = int(debug_finish_job_result[6])
+                
+                if str(pid) not in per_pid_job_finish_info: per_pid_job_finish_info[str(pid)] = {}
+                if str(instance) not in per_pid_job_finish_info[str(pid)]: per_pid_job_finish_info[str(pid)][str(instance)] = {'time': time}
+
+    return per_cpu_sched_switch_info, per_pid_instnace_info, per_pid_job_finish_info, process_name, pid_of_instance_processes
 
 def update_per_pid_cur_instance(cur_instance, instance_info):
     idx = cur_instance['idx']
@@ -259,8 +272,16 @@ def get_node_instance_info(log_file):
 
     return pid, node_instance_info
 
-def get_e2e_instance_response_time(per_cpu_info, start_process, end_process, pid_of_instance_processes):
+def get_e2e_instance_response_time(per_cpu_info, per_pid_job_finish_info, start_process, end_process, pid_of_instance_processes):
     e2e_instance_response_time = {}
+
+    start_task_pid = pid_of_instance_processes[start_process]
+    end_task_pid = pid_of_instance_processes[end_process]
+
+    # Initialize job finish time
+    for instance in per_pid_job_finish_info[end_task_pid]:
+        end_time = per_pid_job_finish_info[end_task_pid][instance]['time']
+        e2e_instance_response_time[instance] = {'start': -100.0, 'end': float(end_time)}
 
     for cpu in per_cpu_info:
         for process in per_cpu_info[cpu]:
@@ -269,19 +290,10 @@ def get_e2e_instance_response_time(per_cpu_info, start_process, end_process, pid
                 instance = str(info['Instance'])
                 pid = str(info['PID'])
                 if process == start_process and pid == pid_of_instance_processes[start_process]:
-                    if instance not in e2e_instance_response_time:
-                        e2e_instance_response_time[instance] = {'start': -100.0, 'end': -100.0}
+                    if instance not in e2e_instance_response_time: continue                        
 
                     if  e2e_instance_response_time[instance]['start'] < 0 or e2e_instance_response_time[instance]['start'] > info['StartTime']:
                         e2e_instance_response_time[instance]['start'] = info['StartTime']
-                        continue
-
-                elif process == end_process and pid == pid_of_instance_processes[end_process]:
-                    if instance not in e2e_instance_response_time:
-                        e2e_instance_response_time[instance] = {'start': -100.0, 'end': -100.0}
-
-                    if  e2e_instance_response_time[instance]['end'] < 0 or e2e_instance_response_time[instance]['end'] < info['EndTime']:
-                        e2e_instance_response_time[instance]['end'] = info['EndTime']
                         continue
 
     remove_targets = []
@@ -323,7 +335,7 @@ if __name__ == "__main__":
 
     file = open(input_ftrace_log_path_, 'r')
 
-    per_cpu_sched_switch_info, per_pid_instnace_info, process_name, pid_of_instance_processes = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
+    per_cpu_sched_switch_info, per_pid_instnace_info, per_pid_job_finish_info, process_name, pid_of_instance_processes = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
     per_cpu_info = update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, process_name)
     per_cpu_info = sort_per_cpu_info(per_cpu_info)
 
@@ -335,7 +347,7 @@ if __name__ == "__main__":
     with open(filtering_option_path_, 'w') as json_file:
         json.dump(filtering_option, json_file, indent=4)
 
-    e2e_instance_response_time = get_e2e_instance_response_time(per_cpu_info, start_process_name_, end_process_name_, pid_of_instance_processes)
+    e2e_instance_response_time = get_e2e_instance_response_time(per_cpu_info, per_pid_job_finish_info, start_process_name_, end_process_name_, pid_of_instance_processes)
     analyze_e2e_instance_response_time(e2e_instance_response_time)
 
     with open(e2e_instance_response_time_path_, 'w') as json_file:
