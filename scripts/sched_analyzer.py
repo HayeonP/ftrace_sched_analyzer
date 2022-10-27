@@ -133,7 +133,7 @@ def parse_ftrace_log(file, process_name, pid_name_info_path):
                 instance = int(debug_finish_job_result[6])
                 
                 if str(pid) not in per_pid_job_finish_info: per_pid_job_finish_info[str(pid)] = {}
-                if str(instance) not in per_pid_job_finish_info[str(pid)]: per_pid_job_finish_info[str(pid)][str(instance)] = {'time': time}
+                per_pid_job_finish_info[str(pid)][str(instance)] = {'time': time}
 
     return per_cpu_sched_switch_info, per_pid_instnace_info, per_pid_job_finish_info, process_name, pid_of_instance_processes
 
