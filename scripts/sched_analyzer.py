@@ -13,7 +13,7 @@ import collections
 ############### TODO ###############
 
 base_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
-data_dir_name='221027_CFS_chain_Hrate'
+data_dir_name='221027_FIFO_chain_Hrate'
 
 # Input
 input_ftrace_log_path_ = base_path_+data_dir_name+'/ftrace_log.txt'

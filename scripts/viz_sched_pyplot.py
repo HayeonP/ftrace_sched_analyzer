@@ -27,9 +27,12 @@ SKIP_THRESHOLD = 0.000005
 # Additional features
 #   skip: Skip sched_info that duration is smaller than SKIP_THREASHOLD
 #   e2e: Plot e2e box
+#   time_range: Target x-axis time range to plot
+#   target_instance: Target instance range to plot. Set -1 if you don't want to use
 features = ['e2e']
 target_cpu = ['cpu6', 'cpu7']
 time_range = []
+instance_range = {'start':-1, 'end':-1}
 
 ####################################
 
@@ -101,8 +104,10 @@ def get_facecolor(task_df):
 
     return facecolor
 
-def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):    
+def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
     cores = sched_info_df['Core'].unique()
+    start_time = float(sched_info_df.min()['StartTime'])
+    end_time = float(sched_info_df.max()['EndTime'])
 
     fig, axis = plt.subplots(len(cores), 1, sharex=True)
 
@@ -114,14 +119,21 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
 
     with open(e2e_instance_response_time_path) as f:
         e2e_instance_respnose_time_info = json.load(f)
-    
-    earliest_start_time = float(sched_info_df.min()['StartTime'])
-    latest_end_time = float(sched_info_df.max()['EndTime'])
+
+
+    if instance_range['start'] != -1 or instance_range['end'] != -1:
+        if str(instance_range['start']) not in e2e_instance_respnose_time_info or str(instance_range['end']) not in e2e_instance_respnose_time_info: 
+            print('Target instance '+str(instance_range)+' does not exist')
+            exit()
+        start_time = e2e_instance_respnose_time_info[str(instance_range['start'])]['start']
+        end_time = e2e_instance_respnose_time_info[str(instance_range['end'])]['end']    
 
     e2e_info_list = []
     if 'e2e' in features:
         for instance in e2e_instance_respnose_time_info:
-            if float(e2e_instance_respnose_time_info[instance]['start']) < earliest_start_time or float(e2e_instance_respnose_time_info[instance]['start']) > latest_end_time: continue
+            if instance_range['start'] != -1 and instance_range['end'] != -1:
+                if int(instance) < instance_range['start'] or int(instance) > instance_range['end']: continue
+                if float(e2e_instance_respnose_time_info[instance]['start']) < start_time or float(e2e_instance_respnose_time_info[instance]['start']) > end_time: continue
             e2e_info_list.append({  'Instance': int(instance), 
                                     'StartTime': float(e2e_instance_respnose_time_info[instance]['start']), 
                                     'EndTime': float(e2e_instance_respnose_time_info[instance]['end']), 
@@ -130,6 +142,8 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
 
     for plot_index, core in enumerate(cores):
         per_core_df = sched_info_df.loc[sched_info_df['Core'] == core]
+        per_core_df = per_core_df.loc[(per_core_df['StartTime'] >= start_time) & (per_core_df['EndTime'] <= end_time)]
+
         tasks = per_core_df['Label'].unique()
         tasks = np.append(tasks, 'Total')
 
@@ -177,7 +191,15 @@ def visualize_per_cpu(sched_info_df, e2e_instance_response_time_path):
                     axis[plot_index].add_patch(Rectangle((e2e_info['StartTime'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][0]), e2e_info['Duration'], instance_plot_value[e2e_info['Instance'] % len(instance_plot_value)][1], edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
                 else:
                     axis.add_patch(Rectangle((e2e_info['StartTime'],0), e2e_info['Duration'], yticks[-1]+10, edgecolor=colors[e2e_info['Instance']%len(colors)], facecolor='none'))
-    
+        
+    # if instance_range['start'] != -1 or instance_range['end'] != -1:
+    #     if str(instance_range['start']) not in e2e_instance_respnose_time_info or str(instance_range['end']) not in e2e_instance_respnose_time_info: 
+    #         print('Target instance '+str(target_instance)+' does not exist')
+    #         exit()
+    #     x_start = e2e_instance_respnose_time_info[str(instance_range['start'])]['start']
+    #     x_end = e2e_instance_respnose_time_info[str(instance_range['end'])]['end']
+    #     plt.xlim(x_start, x_end)
+
     fig.canvas.mpl_connect('button_press_event', lambda event: mouse_event(event, sched_info_df))
     plt.show()
 
