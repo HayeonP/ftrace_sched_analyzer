@@ -12,18 +12,19 @@ import collections
 
 ############### TODO ###############
 
-data_dir_name='temp'
+base_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
+data_dir_name='221027_CFS_chain_Hrate'
 
 # Input
-input_ftrace_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/ftrace_log.txt'
-pid_name_info_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/pid_info.json'
+input_ftrace_log_path_ = base_path_+data_dir_name+'/ftrace_log.txt'
+pid_name_info_path_ = base_path_+data_dir_name+'/pid_info.json'
 start_process_name_ = 'test1'
 end_process_name_ = 'test4'
 
 # Output
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/synthetic_task.json'
-filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/e2e_instance_response_time.json'
+parsed_log_path_ = base_path_+data_dir_name+'/synthetic_task.json'
+filtering_option_path_ = base_path_+'../../filtering_option.json'
+e2e_instance_response_time_path_ = base_path_+data_dir_name+'/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
@@ -312,25 +313,42 @@ def analyze_e2e_instance_response_time(e2e_instance_response_time):
     maximum = 0
     max_instance = 0
     avg = 0
+    instnace_leakages = []
 
-    for instance in e2e_instance_response_time:
+    prev_instance = -1
+    for instance in e2e_instance_response_time:    
         if float(e2e_instance_response_time[instance]['start']) < 0 or  float(e2e_instance_response_time[instance]['end']) < 0: continue
         cur_reseponse_time = float(e2e_instance_response_time[instance]['end']) - float(e2e_instance_response_time[instance]['start'])
         if maximum < cur_reseponse_time:
             maximum = cur_reseponse_time
             max_instance = instance
         avg = cur_reseponse_time + avg
+
+        cur_instance = int(instance)
+        if prev_instance == -1:
+            prev_instance = cur_instance
+            continue
+
+        if prev_instance + 1 != cur_instance:
+            for i in range(prev_instance + 1, cur_instance): instnace_leakages.append(i)
+        prev_instance = cur_instance            
+
     avg = avg / len(e2e_instance_response_time)
 
-    print('[INFO] Max e2e:', maximum,' / Max instance:', max_instance, ' / Avg e2e:', avg)
+    e2e_instance_analysis_result = {'max_e2e_response_time': maximum, 'avg_e2e_response_time': avg, 'max_instance': max_instance, 'instance_leakges': instnace_leakages}    
 
-    return
+    with open(base_path_+data_dir_name+'/e2e_instance_analysis_result.json', 'w') as json_file:
+        json.dump(e2e_instance_analysis_result, json_file, indent=4)
+
+    return maximum, max_instance, avg
 
 def sort_per_cpu_info(per_cpu_info):
     for cpu in per_cpu_info:
         per_cpu_info[cpu] = collections.OrderedDict(sorted(per_cpu_info[cpu].items(), reverse=True))
 
     return per_cpu_info
+
+
 
 if __name__ == "__main__":
     file_path = os.path.dirname(os.path.realpath(__file__))[0:-7]
@@ -350,7 +368,7 @@ if __name__ == "__main__":
         json.dump(filtering_option, json_file, indent=4)
 
     e2e_instance_response_time = get_e2e_instance_response_time(per_cpu_info, per_pid_job_finish_info, start_process_name_, end_process_name_, pid_of_instance_processes)
-    analyze_e2e_instance_response_time(e2e_instance_response_time)
+    max_e2e, max_instance, avg_e2e = analyze_e2e_instance_response_time(e2e_instance_response_time)
 
     with open(e2e_instance_response_time_path_, 'w') as json_file:
         json.dump(e2e_instance_response_time, json_file, indent=4)

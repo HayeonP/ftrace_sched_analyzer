@@ -15,7 +15,7 @@ import copy
 
 ############### TODO ###############
 
-data_dir_name='temp'
+data_dir_name='221027_FIFO_chain_Hrate'
 
 # input
 parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/synthetic_task.json'
