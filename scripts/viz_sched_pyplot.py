@@ -14,13 +14,13 @@ import copy
 
 
 ############### TODO ###############
-
-data_dir_name='221027_FIFO_chain_Hrate'
+base_path = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
+data_dir_name='temp'
 
 # input
-parsed_log_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/synthetic_task.json'
-filtering_option_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/filtering_option.json'
-e2e_instance_response_time_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'+data_dir_name+'/e2e_instance_response_time.json'
+parsed_log_path_ = base_path+data_dir_name+'/synthetic_task.json'
+filtering_option_path_ = base_path+data_dir_name+'/filtering_option.json'
+e2e_instance_response_time_path_ = base_path+data_dir_name+'/e2e_instance_response_time.json'
 
 # Skip threshold (s)
 SKIP_THRESHOLD = 0.000005

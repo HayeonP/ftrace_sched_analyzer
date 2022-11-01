@@ -13,24 +13,24 @@ import collections
 ############### TODO ###############
 
 base_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
-data_dir_name='221027_FIFO_chain_Hrate'
+data_dir_name='temp'
 
 # Input
 input_ftrace_log_path_ = base_path_+data_dir_name+'/ftrace_log.txt'
 pid_name_info_path_ = base_path_+data_dir_name+'/pid_info.json'
 start_process_name_ = 'test1'
-end_process_name_ = 'test4'
+end_process_name_ = 'test5'
 
 # Output
 parsed_log_path_ = base_path_+data_dir_name+'/synthetic_task.json'
-filtering_option_path_ = base_path_+'../../filtering_option.json'
+filtering_option_path_ = base_path_+data_dir_name+'/filtering_option.json'
 e2e_instance_response_time_path_ = base_path_+data_dir_name+'/e2e_instance_response_time.json'
 
 # core number of your computer
 CPU_NUM = 8
 # analyze target process only
 ONLY_TARGETS = False
-target_process_name_ = ['test1','test2','test3','test4']
+target_process_name_ = ['test1','test2','test3','test4','test5']
 # time range
 time_range_ = []
 
@@ -160,14 +160,14 @@ def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, proces
     per_cpu_info = {}
     per_pid_start_info = {}
 
-    per_pid_cur_instnace = {}
+    per_pid_cur_instnace = {}    
     for key in per_pid_instnace_info:
         per_pid_cur_instnace[key] = {
                                         'idx': 0,  
                                         'time': float(per_pid_instnace_info[key][0]['time']), 
                                         'next_time': float(per_pid_instnace_info[key][1]['time']),
                                         'sched_instance': per_pid_instnace_info[key][0]['sched_instance']
-                                    }
+                                    }    
 
     # Init per_process_start_info
     for cpu_idx in range(CPU_NUM):
@@ -177,6 +177,8 @@ def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, proces
         per_cpu_sched_switch_info[cpu] = sorted(per_cpu_sched_switch_info[cpu], key = lambda item: item[0], reverse=False)
 
         per_pid_start_info[cpu] = {}
+
+        _per_pid_cur_instnace = copy.deepcopy(per_pid_cur_instnace)
 
         for sched_switch_info in per_cpu_sched_switch_info[cpu]:
             time = sched_switch_info[TIME]
@@ -211,15 +213,15 @@ def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, proces
                 
 
                 while(True):
-                    if str(process_info['PID']) not in per_pid_cur_instnace or per_pid_cur_instnace[str(process_info['PID'])]['sched_instance'] == NONE:
+                    if str(process_info['PID']) not in _per_pid_cur_instnace or _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance'] == NONE:
                         process_info['Instance'] = NONE
                         break
-                    elif process_info['EndTime'] <= per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
-                        process_info['Instance'] = per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
+                    elif process_info['EndTime'] <= _per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
+                        process_info['Instance'] = _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
                         break
-                    elif process_info['EndTime'] > per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
-                        per_pid_cur_instnace[process_info['PID']] = update_per_pid_cur_instance(per_pid_cur_instnace[str(process_info['PID'])], per_pid_instnace_info[str(process_info['PID'])])
-                        process_info['Instance'] = per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
+                    elif process_info['EndTime'] > _per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
+                        per_pid_cur_instnace[process_info['PID']] = update_per_pid_cur_instance(_per_pid_cur_instnace[str(process_info['PID'])], per_pid_instnace_info[str(process_info['PID'])])
+                        process_info['Instance'] = _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
 
                 if len(time_range_) == 2:
                     if process_info['StartTime'] < time_range_[0] or process_info['EndTime'] > time_range_[1]: break
