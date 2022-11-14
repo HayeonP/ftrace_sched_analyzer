@@ -13,13 +13,13 @@ import collections
 ############### TODO ###############
 
 base_path_ = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
-data_dir_name='temp'
+data_dir_name='221114_CFS_long_chain_spin'
 
 # Input
 input_ftrace_log_path_ = base_path_+data_dir_name+'/ftrace_log.txt'
 pid_name_info_path_ = base_path_+data_dir_name+'/pid_info.json'
 start_process_name_ = 'test1'
-end_process_name_ = 'test5'
+end_process_name_ = 'test6'
 
 # Output
 parsed_log_path_ = base_path_+data_dir_name+'/synthetic_task.json'
@@ -30,7 +30,7 @@ e2e_instance_response_time_path_ = base_path_+data_dir_name+'/e2e_instance_respo
 CPU_NUM = 8
 # analyze target process only
 ONLY_TARGETS = False
-target_process_name_ = ['test1','test2','test3','test4','test5']
+target_process_name_ = ['test1','test2','test3','test4', 'test5', 'test6']
 # time range
 time_range_ = []
 
@@ -154,20 +154,11 @@ def update_per_pid_cur_instance(cur_instance, instance_info):
         cur_instance['sched_instance']= NONE
     return cur_instance
 
-def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, process_name):
+def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_job_finish_info, process_name):
     global count_
     
     per_cpu_info = {}
     per_pid_start_info = {}
-
-    per_pid_cur_instnace = {}    
-    for key in per_pid_instnace_info:
-        per_pid_cur_instnace[key] = {
-                                        'idx': 0,  
-                                        'time': float(per_pid_instnace_info[key][0]['time']), 
-                                        'next_time': float(per_pid_instnace_info[key][1]['time']),
-                                        'sched_instance': per_pid_instnace_info[key][0]['sched_instance']
-                                    }    
 
     # Init per_process_start_info
     for cpu_idx in range(CPU_NUM):
@@ -178,8 +169,11 @@ def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, proces
 
         per_pid_start_info[cpu] = {}
 
-        _per_pid_cur_instnace = copy.deepcopy(per_pid_cur_instnace)
-
+        per_pid_cur_instance = {}
+        for pid in per_pid_job_finish_info:
+            first_instance = list(per_pid_job_finish_info[pid].keys())[0]
+            per_pid_cur_instance[pid] = {'Instance': first_instance, 'EndTime': per_pid_job_finish_info[pid][first_instance]['time']}
+            
         for sched_switch_info in per_cpu_sched_switch_info[cpu]:
             time = sched_switch_info[TIME]
             prev_comm = sched_switch_info[PREV_COMM]
@@ -211,17 +205,20 @@ def update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, proces
                 process_info['StartTime'] = target_start_time
                 process_info['EndTime'] = target_end_time
                 
-
-                while(True):
-                    if str(process_info['PID']) not in _per_pid_cur_instnace or _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance'] == NONE:
-                        process_info['Instance'] = NONE
-                        break
-                    elif process_info['EndTime'] <= _per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
-                        process_info['Instance'] = _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
-                        break
-                    elif process_info['EndTime'] > _per_pid_cur_instnace[str(process_info['PID'])]['next_time']:
-                        per_pid_cur_instnace[process_info['PID']] = update_per_pid_cur_instance(_per_pid_cur_instnace[str(process_info['PID'])], per_pid_instnace_info[str(process_info['PID'])])
-                        process_info['Instance'] = _per_pid_cur_instnace[str(process_info['PID'])]['sched_instance']
+                if str(process_info['PID']) in per_pid_cur_instance:                                        
+                    while True:
+                        cur_instance_info = per_pid_cur_instance[str(process_info['PID'])]
+                        if float(process_info['StartTime'] - 0.0005 <= cur_instance_info['EndTime']): # -0.0005 is added for filtering case when task is preempted during finish_job event and real finish
+                            process_info['Instance'] = cur_instance_info['Instance']
+                            break
+                        elif float(process_info['StartTime']) > float(cur_instance_info['EndTime']):
+                            next_instance = str(int(cur_instance_info['Instance']) + 1)                            
+                            if next_instance not in per_pid_job_finish_info[str(process_info['PID'])]:
+                                process_info['Instance'] = NONE
+                                break
+                            per_pid_cur_instance[str(process_info['PID'])] = {'Instance': next_instance, 'EndTime':per_pid_job_finish_info[str(process_info['PID'])][next_instance]['time']}
+                else:
+                    process_info['Instance'] = NONE
 
                 if len(time_range_) == 2:
                     if process_info['StartTime'] < time_range_[0] or process_info['EndTime'] > time_range_[1]: break
@@ -358,7 +355,7 @@ if __name__ == "__main__":
     file = open(input_ftrace_log_path_, 'r')
 
     per_cpu_sched_switch_info, per_pid_instnace_info, per_pid_job_finish_info, process_name, pid_of_instance_processes = parse_ftrace_log(file ,target_process_name_, pid_name_info_path_)
-    per_cpu_info = update_per_cpu_info(per_cpu_sched_switch_info, per_pid_instnace_info, process_name)
+    per_cpu_info = update_per_cpu_info(per_cpu_sched_switch_info, per_pid_job_finish_info, process_name)
     per_cpu_info = sort_per_cpu_info(per_cpu_info)
 
 

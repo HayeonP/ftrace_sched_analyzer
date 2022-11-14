@@ -1,9 +1,9 @@
-from distutils.command.config import config
+from setuptools import config
 import json
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-from pandas.io.json import json_normalize
+from pandas import json_normalize
 import csv
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
@@ -15,7 +15,7 @@ import copy
 
 ############### TODO ###############
 base_path = '/home/hayeonp/git/ftrace_sched_analyzer/data/synthetic_task_log/'
-data_dir_name='temp'
+data_dir_name='221114_FIFO_long_chain_spin'
 
 # input
 parsed_log_path_ = base_path+data_dir_name+'/synthetic_task.json'
@@ -32,7 +32,7 @@ SKIP_THRESHOLD = 0.000005
 features = ['e2e']
 target_cpu = ['cpu6', 'cpu7']
 time_range = []
-instance_range = {'start':-1, 'end':-1}
+instance_range = {'start':210, 'end':225}
 
 ####################################
 
